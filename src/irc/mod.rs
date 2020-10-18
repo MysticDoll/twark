@@ -21,15 +21,11 @@ impl IRCMessage {
         }
 
         msg.as_text()
-            .map(|text| {
-                text.split("\r\n")
-                    .map(|s| s.to_owned())
-                    .collect::<Vec<String>>()
-            })
-            .unwrap_or(Vec::new())
-            .iter()
-            .filter_map(|msg| {
-                IRCREX.captures(msg).map(|cap| {
+            .unwrap_or("")
+            .split("\r\n")
+            .filter_map(|s| {
+                let msg = s.to_owned();
+                IRCREX.captures(&msg).map(|cap| {
                     let prefix = cap
                         .name("prefix")
                         .map(|c| c.as_str().to_owned())
