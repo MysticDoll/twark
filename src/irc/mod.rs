@@ -1,5 +1,5 @@
 use getset::Getters;
-use regex::{Captures, Regex};
+use regex::Regex;
 use ws::Message;
 
 #[derive(Debug, Getters)]
@@ -28,30 +28,29 @@ impl IRCMessage {
             })
             .unwrap_or(Vec::new())
             .iter()
-            .filter_map(|msg| IRCREX.captures(msg))
-            .collect::<Vec<Captures>>()
-            .iter()
-            .map(|cap| {
-                let prefix = cap
-                    .name("prefix")
-                    .map(|c| c.as_str().to_owned())
-                    .unwrap_or("".to_owned());
-                let command = cap
-                    .name("command")
-                    .map(|c| c.as_str().to_owned())
-                    .unwrap_or("".to_owned());
-                let params = cap
-                    .name("params")
-                    .map(|c| c.as_str().to_owned())
-                    .unwrap_or("".to_owned())
-                    .split("\n")
-                    .map(|s| s.to_owned())
-                    .collect::<Vec<String>>();
-                IRCMessage {
-                    prefix,
-                    command,
-                    params,
-                }
+            .filter_map(|msg| {
+                IRCREX.captures(msg).map(|cap| {
+                    let prefix = cap
+                        .name("prefix")
+                        .map(|c| c.as_str().to_owned())
+                        .unwrap_or("".to_owned());
+                    let command = cap
+                        .name("command")
+                        .map(|c| c.as_str().to_owned())
+                        .unwrap_or("".to_owned());
+                    let params = cap
+                        .name("params")
+                        .map(|c| c.as_str().to_owned())
+                        .unwrap_or("".to_owned())
+                        .split("\n")
+                        .map(|s| s.to_owned())
+                        .collect::<Vec<String>>();
+                    IRCMessage {
+                        prefix,
+                        command,
+                        params,
+                    }
+                })
             })
             .collect()
     }
