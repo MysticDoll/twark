@@ -500,6 +500,7 @@ dependencies = [
  "lazy_static",
  "openssl",
  "regex",
+ "url",
  "ws",
 ]
 

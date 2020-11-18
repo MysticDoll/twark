@@ -1,72 +1,31 @@
+pub(crate) mod common;
+pub(crate) mod fallguys;
+
 use crate::client::TwarkClient;
-use regex::Regex;
+use std::collections::HashMap;
 use ws::Result as WSResult;
 
-#[derive(Debug)]
-pub struct Command {
-    name: String,
-    args: Vec<String>,
+pub trait Command: std::fmt::Debug {
+    fn exec(&self, client: &TwarkClient, args: Vec<String>) -> WSResult<()>;
 }
 
-impl Command {
-    fn new<I: Into<Vec<String>>>(name: String, args: I) -> Self {
-        Self {
-            name,
-            args: args.into(),
+pub struct FunctionBuilder {
+    commands: HashMap<String, Box<dyn Command>>,
+}
+
+impl FunctionBuilder {
+    pub fn new() -> Self {
+        FunctionBuilder {
+            commands: HashMap::new(),
         }
     }
 
-    pub fn exec(&self, client: &TwarkClient) -> WSResult<()> {
-        if self.name == "echo" {
-            client.send(&self.args.join(" "))
-        } else {
-            println!("command not found: {}", self.name);
-            Ok(())
-        }
+    pub fn register<'a>(&'a mut self, key: &str, command: Box<dyn Command>) -> &'a mut Self {
+        self.commands.insert(key.to_owned(), command);
+        self
     }
-}
-#[derive(Debug)]
-enum ParseError {
-    InvalidSource(String),
-    CaptureFailed,
-    RegexError,
-    InvalidMessageFormat,
-}
 
-fn validate(raw: String) -> Result<Command, ParseError> {
-    let re =
-        Regex::new(r"(?P<channel>#\w+) :(?P<message>.+$)").map_err(|_| ParseError::RegexError)?;
-    re.captures(&raw)
-        .ok_or(ParseError::InvalidSource(raw.clone()))
-        .and_then(|cap| cap.name("message").ok_or(ParseError::CaptureFailed))
-        .and_then(|msg| {
-            let re = Regex::new(r"!(?P<command>\w+) (?P<args>.+)")
-                .map_err(|_| ParseError::RegexError)?;
-            re.captures(msg.as_str())
-                .ok_or(ParseError::InvalidMessageFormat)
-        })
-        .and_then(|cap| {
-            let command = cap
-                .name("command")
-                .map(|s| s.as_str().to_string())
-                .ok_or(ParseError::InvalidMessageFormat)?;
-            let capture_args = cap
-                .name("args")
-                .map(|s| s.as_str().to_string())
-                .ok_or(ParseError::InvalidMessageFormat)?;
-            let args: Vec<String> = capture_args.split(" ").map(ToString::to_string).collect();
-
-            Ok(Command::new(command, args))
-        })
-}
-
-pub fn handle_functions(raw: String) -> Option<Command> {
-    println!("raw: {}", raw);
-    match validate(raw) {
-        Ok(command) => Some(command),
-        Err(e) => {
-            println!("command parse error: {:?}", e);
-            None
-        }
+    pub fn build(self) -> HashMap<String, Box<dyn Command>> {
+        self.commands
     }
 }
