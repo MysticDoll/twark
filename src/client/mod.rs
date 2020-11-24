@@ -6,7 +6,7 @@ use ws::{Handler, Handshake, Message, Result as WSResult, Sender};
 
 pub struct TwarkClient {
     out: Sender,
-    commands: HashMap<String, Box<dyn Command>>,
+    commands: HashMap<String, Box<dyn Command + Send>>,
 }
 
 impl Handler for TwarkClient {
@@ -24,6 +24,14 @@ impl Handler for TwarkClient {
 
     fn on_message(&mut self, msg: Message) -> WSResult<()> {
         for m in IRCMessage::from_ws_msg(msg).iter() {
+            let re = Regex::new(r".*!(?P<user>[^@]+).+").unwrap();
+            let user = re
+                .captures(m.prefix())
+                .and_then(|p| p.name("user"))
+                .map(|u| u.as_str().to_owned())
+                .unwrap_or("<unknown_user>".to_owned());
+            println!("user: {} commented", user);
+
             let params = m
                 .params()
                 .first()
@@ -37,12 +45,19 @@ impl Handler for TwarkClient {
                 })?;
             if let Some((cmd, args)) = self.handle_commands(params) {
                 println!("debug command:{:?}", cmd);
-                if let Err(e) = cmd.exec(&self, args) {
+                if let Err(e) = cmd.exec(&self, args, user) {
                     println!("command execution error: {}", e);
                 }
             };
         }
         Ok(())
+    }
+
+    fn on_close(&mut self, code: ws::CloseCode, reason: &str) {
+        let c: u16 = code.into();
+        println!("socket closed code: {}, reason: {}", c, reason);
+        crate::connect();
+        println!("trying reconnect");
     }
 }
 
@@ -56,7 +71,7 @@ enum ParseError {
 }
 
 impl TwarkClient {
-    pub fn new(out: Sender, commands: HashMap<String, Box<dyn Command>>) -> Self {
+    pub fn new(out: Sender, commands: HashMap<String, Box<dyn Command + Send>>) -> Self {
         Self { out, commands }
     }
 
@@ -64,14 +79,14 @@ impl TwarkClient {
         self.out.send(format!("PRIVMSG #mysticdoll_ :{}", msg))
     }
 
-    fn validate(&self, raw: String) -> Result<(&Box<dyn Command>, Vec<String>), ParseError> {
+    fn validate(&self, raw: String) -> Result<(&Box<dyn Command + Send>, Vec<String>), ParseError> {
         let re = Regex::new(r"(?P<channel>#\w+) :(?P<message>.+$)")
             .map_err(|_| ParseError::RegexError)?;
         re.captures(&raw)
             .ok_or(ParseError::InvalidSource(raw.clone()))
             .and_then(|cap| cap.name("message").ok_or(ParseError::CaptureFailed))
             .and_then(|msg| {
-                let re = Regex::new(r"!(?P<command>\w+) (?P<args>.+)")
+                let re = Regex::new(r"!(?P<command>\w+)( (?P<args>.+))?")
                     .map_err(|_| ParseError::RegexError)?;
                 re.captures(msg.as_str())
                     .ok_or(ParseError::InvalidMessageFormat)
@@ -84,7 +99,7 @@ impl TwarkClient {
                 let capture_args = cap
                     .name("args")
                     .map(|s| s.as_str().to_string())
-                    .ok_or(ParseError::InvalidMessageFormat)?;
+                    .unwrap_or("".to_owned());
                 let args: Vec<String> = capture_args.split(" ").map(ToString::to_string).collect();
 
                 self.commands
@@ -94,7 +109,7 @@ impl TwarkClient {
             })
     }
 
-    pub fn handle_commands(&self, raw: String) -> Option<(&Box<dyn Command>, Vec<String>)> {
+    pub fn handle_commands(&self, raw: String) -> Option<(&Box<dyn Command + Send>, Vec<String>)> {
         println!("raw: {}", raw);
         match self.validate(raw) {
             Ok(result) => Some(result),
