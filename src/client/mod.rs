@@ -86,7 +86,7 @@ impl TwarkClient {
             .ok_or(ParseError::InvalidSource(raw.clone()))
             .and_then(|cap| cap.name("message").ok_or(ParseError::CaptureFailed))
             .and_then(|msg| {
-                let re = Regex::new(r"!(?P<command>\w+)( (?P<args>.+))?")
+                let re = Regex::new(r"^!(?P<command>\w+)( (?P<args>.+))?")
                     .map_err(|_| ParseError::RegexError)?;
                 re.captures(msg.as_str())
                     .ok_or(ParseError::InvalidMessageFormat)
